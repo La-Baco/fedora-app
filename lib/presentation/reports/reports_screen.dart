@@ -14,7 +14,21 @@ class ReportScreen extends ConsumerWidget {
     final servicesAsync = ref.watch(servicesStreamProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Laporan Transaksi')),
+      appBar: AppBar(
+        title: const Text('Laporan Transaksi', style: TextStyle(fontWeight: FontWeight.w900, color: Colors.white, fontSize: 20, letterSpacing: -0.5)),
+        centerTitle: false,
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFFD72323), Color(0xFF1A1A1A)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+        ),
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
       body: salesAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (err, stack) => Center(child: Text('Error: $err')),

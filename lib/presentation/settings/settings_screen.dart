@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'printer_settings_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -6,7 +7,21 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Pengaturan Aplikasi')),
+      appBar: AppBar(
+        title: const Text('Pengaturan Aplikasi', style: TextStyle(fontWeight: FontWeight.w900, color: Colors.white, fontSize: 20, letterSpacing: -0.5)),
+        centerTitle: false,
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFFD72323), Color(0xFF1A1A1A)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+        ),
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -35,9 +50,10 @@ class SettingsScreen extends StatelessWidget {
               subtitle: const Text('Hubungkan printer thermal untuk nota'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Modul integrasi printer akan segera hadir.'),
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const PrinterSettingsScreen(),
                   ),
                 );
               },

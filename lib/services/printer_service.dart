@@ -1,72 +1,64 @@
-import 'package:blue_thermal_printer/blue_thermal_printer.dart';
+import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter/foundation.dart';
 
 class PrinterService {
-  final BlueThermalPrinter _bluetooth = BlueThermalPrinter.instance;
-
-  // Mendapatkan daftar perangkat bluetooth yang sudah dipairing
-  Future<List<BluetoothDevice>> getBondedDevices() async {
-    return await _bluetooth.getBondedDevices();
+  Future<List<BluetoothInfo>> getBondedDevices() async {
+    return await PrintBluetoothThermal.pairedBluetooths;
   }
 
-  // Koneksi ke printer
-  Future<void> connect(BluetoothDevice device) async {
-    final isConnected = await _bluetooth.isConnected;
-    if (isConnected == false) {
-      await _bluetooth.connect(device);
+  Future<void> connect(String macAddress) async {
+    bool connectionStatus = await PrintBluetoothThermal.connectionStatus;
+    if (!connectionStatus) {
+      await PrintBluetoothThermal.connect(macPrinterAddress: macAddress);
     }
   }
 
-  // Putus koneksi
   Future<void> disconnect() async {
-    await _bluetooth.disconnect();
+    await PrintBluetoothThermal.disconnect;
   }
 
-  // Format Cetak Struk Kasir (POS)
   Future<void> printReceipt({
     required String invoiceId,
+    required String cashier,
     required String paymentMethod,
     required double totalAmount,
-    required List<Map<String, dynamic>> items, // Tambahan: Menerima daftar item
+    required double paymentAmount,
+    required double changeAmount,
+    required double discountAmount,
+    required List<Map<String, dynamic>> items,
   }) async {
-    final isConnected = await _bluetooth.isConnected;
-    if (isConnected == true) {
-      _bluetooth.printNewLine();
-      _bluetooth.printCustom("KONTER FEDORA", 3, 1);
-      _bluetooth.printCustom("Jl. Contoh Alamat No. 123", 1, 1);
-      _bluetooth.printCustom("--------------------------------", 1, 1);
+    bool isConnected = await PrintBluetoothThermal.connectionStatus;
+    if (isConnected) {
+      String receipt = "";
+      receipt += "KONTER FEDORA\n";
+      receipt += "--------------------------------\n";
+      receipt += "No   : $invoiceId\n";
+      receipt += "Kasir: $cashier\n";
+      receipt += "Tgl  : ${DateFormat('dd-MM-yyyy HH:mm').format(DateTime.now())}\n";
+      receipt += "--------------------------------\n";
 
-      _bluetooth.printLeftRight("No: $invoiceId", "", 1);
-      _bluetooth.printLeftRight(
-        "Tgl: ${DateFormat('dd-MM-yyyy HH:mm').format(DateTime.now())}",
-        "",
-        1,
-      );
-      _bluetooth.printCustom("--------------------------------", 1, 1);
-
-      // MENCETAK DAFTAR BARANG
       for (var item in items) {
-        // Format: Nama Barang (Kiri)
-        _bluetooth.printCustom("${item['name']}", 1, 0);
-        // Format: Qty x Harga (Kiri) --------- Subtotal (Kanan)
-        _bluetooth.printLeftRight(
-          "  ${item['qty']}x Rp ${item['price']}",
-          "Rp ${item['subtotal']}",
-          1,
-        );
+        receipt += "${item['name']}\n";
+        receipt += "  ${item['qty']}x Rp ${item['price']}    Rp ${item['subtotal']}\n";
       }
 
-      _bluetooth.printCustom("--------------------------------", 1, 1);
-      _bluetooth.printLeftRight("TOTAL:", "Rp ${totalAmount.toInt()}", 2);
-      _bluetooth.printLeftRight("BAYAR:", paymentMethod, 1);
-      _bluetooth.printNewLine();
-      _bluetooth.printCustom("Terima Kasih", 2, 1);
-      _bluetooth.printNewLine();
-      _bluetooth.printNewLine();
-      _bluetooth.paperCut();
+      receipt += "--------------------------------\n";
+      receipt += "Subtotal: Rp ${totalAmount.toInt()}\n";
+      if (discountAmount > 0) {
+        receipt += "Diskon  : Rp ${discountAmount.toInt()}\n";
+      }
+      receipt += "Total   : Rp ${(totalAmount - discountAmount).toInt()}\n";
+      receipt += "Bayar   : Rp ${paymentAmount.toInt()} ($paymentMethod)\n";
+      receipt += "Kembali : Rp ${changeAmount.toInt()}\n\n";
+      receipt += "Terima Kasih Atas Kunjungan Anda\n\n\n";
+
+      await PrintBluetoothThermal.writeString(printText: PrintTextSize(size: 1, text: receipt));
+    } else {
+      debugPrint("Printer tidak terkoneksi.");
     }
   }
-  // Format Cetak Resi Penerimaan Service
+
   Future<void> printServiceTicket({
     required String serviceId,
     required String customerName,
@@ -74,26 +66,22 @@ class PrinterService {
     required String unit,
     required String complaint,
   }) async {
-    final isConnected = await _bluetooth.isConnected;
-    if (isConnected == true) {
-      _bluetooth.printNewLine();
-      _bluetooth.printCustom("KONTER FEDORA", 3, 1);
-      _bluetooth.printCustom("TANDA TERIMA SERVICE", 2, 1);
-      _bluetooth.printCustom("--------------------------------", 1, 1);
+    bool isConnected = await PrintBluetoothThermal.connectionStatus;
+    if (isConnected) {
+      String receipt = "";
+      receipt += "KONTER FEDORA\n";
+      receipt += "TANDA TERIMA SERVICE\n";
+      receipt += "--------------------------------\n";
+      receipt += "No     : $serviceId\n";
+      receipt += "Nama   : $customerName\n";
+      receipt += "HP     : $phone\n";
+      receipt += "Unit   : $unit\n";
+      receipt += "Keluhan: $complaint\n";
+      receipt += "--------------------------------\n";
+      receipt += "Harap bawa resi ini saat\n";
+      receipt += "pengambilan unit.\n\n\n";
 
-      _bluetooth.printLeftRight("No:", serviceId, 1);
-      _bluetooth.printLeftRight("Nama:", customerName, 1);
-      _bluetooth.printLeftRight("HP:", phone, 1);
-      _bluetooth.printLeftRight("Unit:", unit, 1);
-      _bluetooth.printCustom("Keluhan:", 1, 0);
-      _bluetooth.printCustom(complaint, 1, 0);
-
-      _bluetooth.printCustom("--------------------------------", 1, 1);
-      _bluetooth.printCustom("Harap bawa resi ini saat", 1, 1);
-      _bluetooth.printCustom("pengambilan unit.", 1, 1);
-      _bluetooth.printNewLine();
-      _bluetooth.printNewLine();
-      _bluetooth.paperCut();
+      await PrintBluetoothThermal.writeString(printText: PrintTextSize(size: 1, text: receipt));
     }
   }
 }

@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:drift/drift.dart' as drift;
 import '../../../data/datasources/local/app_database.dart';
 import '../../../utils/currency_formatter.dart';
 import 'providers/service_provider.dart';
 import '../stock/providers/stock_provider.dart';
+import '../../../services/printer_service.dart';
 
 class ServiceDetailScreen extends ConsumerStatefulWidget {
   final Service service;
@@ -20,6 +20,7 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
   late String _currentStatus;
   List<ServiceSparepart> _usedSpareparts = [];
   double _totalSparepartCost = 0;
+  final PrinterService _printerService = PrinterService();
 
   final List<String> _statusOptions = [
     'Dalam Antrean',
@@ -27,6 +28,7 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
     'Menunggu Sparepart',
     'Proses Perbaikan',
     'Selesai',
+    'Sudah Diambil',
     'Batal',
   ];
 
@@ -37,7 +39,6 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
     _loadSpareparts();
   }
 
-  // Mengambil daftar sparepart yang sudah ditambahkan ke servis ini
   Future<void> _loadSpareparts() async {
     final repo = ref.read(serviceRepositoryProvider);
     final parts = await repo.getSparepartsForService(widget.service.id);
@@ -53,7 +54,6 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
     });
   }
 
-  // Menyimpan perubahan status
   Future<void> _updateStatus(String newStatus) async {
     final repo = ref.read(serviceRepositoryProvider);
     await repo.updateService(widget.service.copyWith(status: newStatus));
@@ -69,31 +69,86 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
     }
   }
 
-  // Fungsi Kirim Pesan WA
   Future<void> _sendWhatsApp() async {
-    // Ubah angka 0 di depan menjadi 62
     String phone = widget.service.phone;
     if (phone.startsWith('0')) {
+      // The user didn't specify a default, we assume 62 (Indonesia) for numbers starting with 0.
       phone = '62${phone.substring(1)}';
     }
 
-    final totalAkhir = widget.service.serviceFee + _totalSparepartCost;
-    final message =
-        "Halo Kak ${widget.service.customerName},\n\n"
-        "Ini dari Konter Fedora.\n"
-        "Status perbaikan HP ${widget.service.phoneBrand} ${widget.service.phoneType} saat ini: *$_currentStatus*.\n"
-        "Total Biaya Sementara: *${CurrencyFormat.convertToIdr(totalAkhir)}*\n\n"
-        "Terima kasih.";
+    final double totalBiaya = widget.service.serviceFee + _totalSparepartCost;
+    final address = widget.service.addressDetail != null && widget.service.addressDetail!.isNotEmpty 
+      ? '${widget.service.addressDetail}, Desa ${widget.service.village}' 
+      : 'Desa ${widget.service.village}';
 
-    final url = Uri.parse(
-      "https://wa.me/$phone?text=${Uri.encodeComponent(message)}",
-    );
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url, mode: LaunchMode.externalApplication);
+    final message =
+        "*KONTER FEDORA*\n\n"
+        "Halo Kak ${widget.service.customerName},\n\n"
+        "Kami ingin menginformasikan bahwa servis HP Anda telah selesai dan siap diambil.\n\n"
+        "*Detail Servis:*\n"
+        "Alamat: $address\n"
+        "Perangkat: ${widget.service.phoneBrand} ${widget.service.phoneType}\n"
+        "Keluhan: ${widget.service.issue}\n\n"
+        "*Total Biaya:* ${CurrencyFormat.convertToIdr(totalBiaya)}\n\n"
+        "Terima kasih telah mempercayakan servis HP Anda kepada kami! 🙏";
+
+    final url = Uri.parse("whatsapp://send?phone=$phone&text=${Uri.encodeComponent(message)}");
+    final fallbackUrl = Uri.parse("https://wa.me/$phone?text=${Uri.encodeComponent(message)}");
+    
+    try {
+      // Coba buka aplikasi WhatsApp langsung menggunakan skema URI
+      bool launched = await launchUrl(url, mode: LaunchMode.externalApplication);
+      
+      // Jika gagal (mungkin karena canLaunchUrl batasan Android 11+), gunakan fallback web
+      if (!launched) {
+        launched = await launchUrl(fallbackUrl, mode: LaunchMode.externalApplication);
+        if (!launched) {
+          _showErrorDialog("Tidak dapat membuka WhatsApp. Pastikan aplikasi terinstal.");
+        }
+      }
+    } catch (e) {
+      _showErrorDialog("Gagal membuka WhatsApp: $e");
     }
   }
 
-  // Dialog untuk memilih Sparepart dari Stok
+  void _showErrorDialog(String message) {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Error'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _printReceipt() async {
+    try {
+      await _printerService.printServiceTicket(
+        serviceId: 'SRV-${widget.service.id}',
+        customerName: widget.service.customerName,
+        phone: widget.service.phone,
+        unit: '${widget.service.phoneBrand} ${widget.service.phoneType}',
+        complaint: widget.service.issue,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal mencetak resi: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   void _showAddSparepartDialog() {
     showModalBottomSheet(
       context: context,
@@ -107,7 +162,6 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
 
             return stocksAsync.when(
               data: (stocks) {
-                // Hanya tampilkan yang kategorinya Sparepart dan stoknya > 0
                 final availableParts = stocks
                     .where((s) => s.category == 'Sparepart' && s.quantity > 0)
                     .toList();
@@ -119,38 +173,57 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
                   );
                 }
 
-                return ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: availableParts.length,
-                  itemBuilder: (context, index) {
-                    final part = availableParts[index];
-                    return ListTile(
-                      title: Text(part.name),
-                      subtitle: Text(
-                        'Stok: ${part.quantity} | Harga: ${CurrencyFormat.convertToIdr(part.sellPrice)}',
-                      ),
-                      trailing: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                        ),
-                        onPressed: () async {
-                          final repo = ref.read(serviceRepositoryProvider);
-                          await repo.addSparepartToService(
-                            ServiceSparepartsCompanion.insert(
-                              serviceId: widget.service.id,
-                              stockId: part.id,
-                              quantity: 1, // Default potong 1 stok
-                              price: part.sellPrice,
+                return Column(
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Text('Pilih Sparepart', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    ),
+                    Expanded(
+                      child: ListView.separated(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        itemCount: availableParts.length,
+                        separatorBuilder: (_, __) => const Divider(),
+                        itemBuilder: (context, index) {
+                          final part = availableParts[index];
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(part.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                            subtitle: Text('Sisa: ${part.quantity} pcs'),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(CurrencyFormat.convertToIdr(part.sellPrice), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                                const SizedBox(width: 12),
+                                ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                                    backgroundColor: Theme.of(context).primaryColor,
+                                    foregroundColor: Colors.white,
+                                  ),
+                                  onPressed: () async {
+                                    final repo = ref.read(serviceRepositoryProvider);
+                                    await repo.addSparepartToService(
+                                      ServiceSparepartsCompanion.insert(
+                                        serviceId: widget.service.id,
+                                        stockId: part.id,
+                                        quantity: 1, 
+                                        price: part.sellPrice,
+                                      ),
+                                    );
+
+                                    if (context.mounted) Navigator.pop(context);
+                                    _loadSpareparts();
+                                  },
+                                  child: const Text('Gunakan'),
+                                ),
+                              ],
                             ),
                           );
-
-                          if (context.mounted) Navigator.pop(context);
-                          _loadSpareparts(); // Refresh daftar sparepart di layar detail
                         },
-                        child: const Text('Gunakan'),
                       ),
-                    );
-                  },
+                    ),
+                  ],
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
@@ -164,10 +237,27 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final stocksAsync = ref.watch(stocksStreamProvider);
+    final stocks = stocksAsync.value ?? [];
     final totalKeseluruhan = widget.service.serviceFee + _totalSparepartCost;
+    final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Detail Servis')),
+      appBar: AppBar(
+        title: const Text('Detail Servis', style: TextStyle(fontWeight: FontWeight.w900, color: Colors.white, fontSize: 20, letterSpacing: -0.5)),
+        centerTitle: false,
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFFD72323), Color(0xFF1A1A1A)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+        ),
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -175,6 +265,7 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
           children: [
             // KARTU INFO PELANGGAN
             Card(
+              elevation: 2,
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -184,32 +275,34 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text(
-                          'Informasi Pelanggan',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.grey,
-                          ),
+                          'INFORMASI PELANGGAN',
+                          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 12),
                         ),
-                        Icon(
-                          Icons.person,
-                          color: Theme.of(context).primaryColor,
-                        ),
+                        Icon(Icons.person, color: theme.primaryColor),
                       ],
                     ),
                     const Divider(),
                     Text(
                       widget.service.customerName,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                     ),
-                    Text(
-                      '${widget.service.village} ${widget.service.addressDetail != null ? "- ${widget.service.addressDetail}" : ""}',
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Icon(Icons.location_on_outlined, size: 16, color: Colors.grey),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text('${widget.service.village} ${widget.service.addressDetail != null ? "- ${widget.service.addressDetail}" : ""}', style: const TextStyle(color: Colors.black87)),
+                        ),
+                      ],
                     ),
-                    Text(
-                      widget.service.phone,
-                      style: const TextStyle(color: Colors.blue),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        const Icon(Icons.phone_outlined, size: 16, color: Colors.grey),
+                        const SizedBox(width: 4),
+                        Text(widget.service.phone, style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+                      ],
                     ),
                   ],
                 ),
@@ -217,60 +310,70 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
             ),
             const SizedBox(height: 12),
 
-            // KARTU INFO HP
+            // KARTU INFO HP & STATUS
             Card(
+              elevation: 2,
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Detail Perbaikan',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey,
-                      ),
+                      'DETAIL PERBAIKAN & STATUS',
+                      style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 12),
                     ),
                     const Divider(),
                     Text(
                       '${widget.service.phoneBrand} ${widget.service.phoneType}',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Keluhan:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
+                          const SizedBox(height: 4),
+                          Text(widget.service.issue),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Keluhan:',
-                      style: TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    Text(widget.service.issue),
                     const SizedBox(height: 16),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          'Status Saat Ini:',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        DropdownButton<String>(
-                          value: _currentStatus,
-                          items: _statusOptions
-                              .map(
-                                (s) => DropdownMenuItem(
-                                  value: s,
-                                  child: Text(
-                                    s,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
+                        const Text('Status Saat Ini:', style: TextStyle(fontWeight: FontWeight.bold)),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.grey.shade300),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: _currentStatus,
+                              isDense: true,
+                              icon: const Icon(Icons.arrow_drop_down),
+                              items: _statusOptions
+                                  .map(
+                                    (s) => DropdownMenuItem(
+                                      value: s,
+                                      child: Text(s, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                                     ),
-                                  ),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (val) {
-                            if (val != null) _updateStatus(val);
-                          },
+                                  )
+                                  .toList(),
+                              onChanged: (val) {
+                                if (val != null) _updateStatus(val);
+                              },
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -282,6 +385,7 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
 
             // KARTU RINCIAN BIAYA & SPAREPART
             Card(
+              elevation: 2,
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -291,16 +395,17 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text(
-                          'Rincian Biaya',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.grey,
-                          ),
+                          'RINCIAN BIAYA',
+                          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 12),
                         ),
-                        TextButton.icon(
+                        ElevatedButton.icon(
                           onPressed: _showAddSparepartDialog,
-                          icon: const Icon(Icons.add),
-                          label: const Text('Sparepart'),
+                          icon: const Icon(Icons.add, size: 16),
+                          label: const Text('Sparepart', style: TextStyle(fontSize: 12)),
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            minimumSize: const Size(0, 36),
+                          ),
                         ),
                       ],
                     ),
@@ -308,92 +413,79 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Biaya Jasa'),
-                        Text(
-                          CurrencyFormat.convertToIdr(
-                            widget.service.serviceFee,
-                          ),
-                        ),
+                        const Text('Biaya Jasa', style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text(CurrencyFormat.convertToIdr(widget.service.serviceFee), style: const TextStyle(fontWeight: FontWeight.bold)),
                       ],
                     ),
+                    const SizedBox(height: 12),
+                    const Text('Sparepart Digunakan:', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey, fontSize: 12)),
                     const SizedBox(height: 8),
-                    const Text(
-                      'Sparepart Digunakan:',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: Colors.red,
-                      ),
-                    ),
                     if (_usedSpareparts.isEmpty)
-                      const Text(
-                        '- Tidak ada',
-                        style: TextStyle(fontStyle: FontStyle.italic),
-                      ),
+                      const Text('- Belum ada sparepart ditambahkan', style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey, fontSize: 13)),
 
                     ..._usedSpareparts.map(
-                      (p) => Padding(
-                        padding: const EdgeInsets.only(top: 4.0),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text('- ID Barang: ${p.stockId} (x${p.quantity})'),
-                            Text(
-                              CurrencyFormat.convertToIdr(p.price * p.quantity),
-                            ),
-                          ],
-                        ),
-                      ),
+                      (p) {
+                        final stockOpt = stocks.where((s) => s.id == p.stockId).toList();
+                        final stockName = stockOpt.isNotEmpty ? stockOpt.first.name : 'Item ${p.stockId}';
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8.0),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('- $stockName (x${p.quantity})'),
+                              Text(CurrencyFormat.convertToIdr(p.price * p.quantity)),
+                            ],
+                          ),
+                        );
+                      }
                     ),
 
-                    const Divider(thickness: 2),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'TOTAL BIAYA',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
+                    const Divider(thickness: 1, height: 24),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'TOTAL BIAYA',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                           ),
-                        ),
-                        Text(
-                          CurrencyFormat.convertToIdr(totalKeseluruhan),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 18,
-                            color: Colors.green,
+                          Text(
+                            CurrencyFormat.convertToIdr(totalKeseluruhan),
+                            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 20, color: Colors.green),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ],
                 ),
               ),
             ),
+            const SizedBox(height: 80), // Padding for bottom nav
           ],
         ),
       ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
+      bottomSheet: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
+        ),
+        child: SafeArea(
           child: Row(
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () {
-                    // TODO: Aksi cetak resi thermal di tahap selanjutnya
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Fitur cetak resi akan dibuat pada tahap integrasi printer.',
-                        ),
-                      ),
-                    );
-                  },
+                  onPressed: _printReceipt,
                   icon: const Icon(Icons.print),
                   label: const Text('Cetak Resi'),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 16),
+                    side: BorderSide(color: theme.primaryColor),
                   ),
                 ),
               ),
@@ -404,7 +496,8 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
                   icon: const Icon(Icons.send),
                   label: const Text('Kirim WA'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green, // Warna khas WA
+                    backgroundColor: const Color(0xFF25D366), // WA Green
+                    foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
                 ),

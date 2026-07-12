@@ -27,16 +27,16 @@ class CartNotifier extends Notifier<List<CartItem>> {
     final index = state.indexWhere((item) => item.stock.id == stock.id);
 
     if (index != -1) {
-      // Jika barang sudah ada, tambah kuantitasnya (selama stok gudang masih cukup)
       if (state[index].quantity < stock.quantity) {
-        final newState = [
-          ...state,
-        ]; // Buat salinan agar UI mendeteksi pembaruan
-        newState[index].quantity++;
+        final newState = [...state];
+        // Buat instance CartItem baru agar Riverpod mendeteksi perubahan
+        newState[index] = CartItem(
+          stock: newState[index].stock, 
+          quantity: newState[index].quantity + 1
+        );
         state = newState;
       }
     } else {
-      // Jika belum ada, masukkan sebagai item baru
       state = [...state, CartItem(stock: stock)];
     }
   }
@@ -51,7 +51,8 @@ class CartNotifier extends Notifier<List<CartItem>> {
     } else if (newQty <= stock.quantity) {
       state = state.map((item) {
         if (item.stock.id == stock.id) {
-          item.quantity = newQty;
+          // Buat instance baru
+          return CartItem(stock: item.stock, quantity: newQty);
         }
         return item;
       }).toList();

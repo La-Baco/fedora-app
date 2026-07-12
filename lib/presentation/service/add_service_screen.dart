@@ -5,7 +5,9 @@ import '../../../data/datasources/local/app_database.dart';
 import 'providers/service_provider.dart';
 
 class AddServiceScreen extends ConsumerStatefulWidget {
-  const AddServiceScreen({super.key});
+  final Service? service;
+  
+  const AddServiceScreen({super.key, this.service});
 
   @override
   ConsumerState<AddServiceScreen> createState() => _AddServiceScreenState();
@@ -46,15 +48,44 @@ class _AddServiceScreenState extends ConsumerState<AddServiceScreen> {
     'Advan',
     'Infinix',
     'Realme',
+    'Apple',
+    'Poco',
+    'Vivo',
+    'Honor',
+    'Nokia',
+    'Redmi',
+    'Tecno',
+    'Itel',
+    'Huawei',
     'Lainnya',
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.service != null) {
+      final s = widget.service!;
+      _nameController.text = s.customerName;
+      _addressDetailController.text = s.addressDetail ?? '';
+      _phoneController.text = s.phone;
+      _phoneTypeController.text = s.phoneType;
+      _issueController.text = s.issue;
+      _serviceFeeController.text = s.serviceFee.toInt().toString();
+      if (_villages.contains(s.village)) _selectedVillage = s.village;
+      if (_brands.contains(s.phoneBrand)) {
+        _selectedBrand = s.phoneBrand;
+      } else {
+        _selectedBrand = 'Lainnya';
+      }
+    }
+  }
 
   Future<void> _saveService() async {
     if (_formKey.currentState!.validate()) {
       if (_selectedVillage == null || _selectedBrand == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Pilih Desa dan Merek HP terlebih dahulu!'),
+            content: Text('Pilih Desa dan Brand terlebih dahulu!'),
             backgroundColor: Colors.red,
           ),
         );
@@ -63,22 +94,38 @@ class _AddServiceScreenState extends ConsumerState<AddServiceScreen> {
 
       final repo = ref.read(serviceRepositoryProvider);
 
-      // Simpan data servis ke database
-      await repo.insertService(
-        ServicesCompanion.insert(
-          customerName: _nameController.text,
-          village: _selectedVillage!,
-          addressDetail: drift.Value(_addressDetailController.text),
-          phone: _phoneController.text,
-          phoneBrand: _selectedBrand!,
-          phoneType: _phoneTypeController.text,
-          issue: _issueController.text,
-          serviceFee: drift.Value(
-            double.tryParse(_serviceFeeController.text) ?? 0.0,
+      if (widget.service == null) {
+        // Tambah data servis baru ke database
+        await repo.insertService(
+          ServicesCompanion.insert(
+            customerName: _nameController.text,
+            village: _selectedVillage!,
+            addressDetail: drift.Value(_addressDetailController.text),
+            phone: _phoneController.text,
+            phoneBrand: _selectedBrand!,
+            phoneType: _phoneTypeController.text,
+            issue: _issueController.text,
+            serviceFee: drift.Value(
+              double.tryParse(_serviceFeeController.text) ?? 0.0,
+            ),
+            status: const drift.Value('Dalam Antrean'), // Status default
           ),
-          status: const drift.Value('Dalam Antrean'), // Status default
-        ),
-      );
+        );
+      } else {
+        // Update data servis yang sudah ada
+        await repo.updateService(
+          widget.service!.copyWith(
+            customerName: _nameController.text,
+            village: _selectedVillage!,
+            addressDetail: drift.Value(_addressDetailController.text),
+            phone: _phoneController.text,
+            phoneBrand: _selectedBrand!,
+            phoneType: _phoneTypeController.text,
+            issue: _issueController.text,
+            serviceFee: double.tryParse(_serviceFeeController.text) ?? 0.0,
+          ),
+        );
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -95,7 +142,21 @@ class _AddServiceScreenState extends ConsumerState<AddServiceScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Terima Servis Baru')),
+      appBar: AppBar(
+        title: Text(widget.service == null ? 'Terima Servis Baru' : 'Edit Servis', style: const TextStyle(fontWeight: FontWeight.w900, color: Colors.white, fontSize: 20, letterSpacing: -0.5)),
+        centerTitle: false,
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFFD72323), Color(0xFF1A1A1A)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+        ),
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Form(
@@ -151,7 +212,6 @@ class _AddServiceScreenState extends ConsumerState<AddServiceScreen> {
                 keyboardType: TextInputType.phone,
                 decoration: const InputDecoration(
                   labelText: 'No. WhatsApp / Telepon',
-                  prefixText: '+62 ',
                   prefixIcon: Icon(Icons.phone_outlined),
                 ),
                 validator: (val) => val!.isEmpty ? 'Wajib diisi' : null,
@@ -175,7 +235,7 @@ class _AddServiceScreenState extends ConsumerState<AddServiceScreen> {
                     child: DropdownButtonFormField<String>(
                       value: _selectedBrand,
                       decoration: const InputDecoration(
-                        labelText: 'Merek HP',
+                        labelText: 'Brand',
                         prefixIcon: Icon(Icons.smartphone_outlined),
                       ),
                       items: _brands
@@ -200,6 +260,7 @@ class _AddServiceScreenState extends ConsumerState<AddServiceScreen> {
 
               TextFormField(
                 controller: _issueController,
+                minLines: 1,
                 maxLines: 3,
                 decoration: const InputDecoration(
                   labelText: 'Keluhan / Kerusakan',
