@@ -75,7 +75,9 @@ class PrinterService {
       bytes += generator.text("Bayar   : Rp ${paymentAmount.toInt()} ($paymentMethod)");
       bytes += generator.text("Kembali : Rp ${changeAmount.toInt()}");
       bytes += generator.feed(1);
-      bytes += generator.text("Terima Kasih Atas Kunjungan Anda", styles: const PosStyles(align: PosAlign.center));
+      bytes += generator.text("Simpan Resi ini", styles: const PosStyles(align: PosAlign.center));
+      bytes += generator.text("Sebagai Bukti Transaksi Sah", styles: const PosStyles(align: PosAlign.center));
+      bytes += generator.text("*** TERIMA KASIH ***", styles: const PosStyles(align: PosAlign.center));
       bytes += generator.feed(3);
 
       await PrintBluetoothThermal.writeBytes(bytes);
@@ -90,6 +92,7 @@ class PrinterService {
     required String phone,
     required String unit,
     required String complaint,
+    required double totalCost,
   }) async {
     bool isConnected = await PrintBluetoothThermal.connectionStatus;
     if (isConnected) {
@@ -122,8 +125,11 @@ class PrinterService {
       bytes += generator.text("HP     : $phone");
       bytes += generator.text("Unit   : $unit");
       bytes += generator.text("Keluhan: $complaint");
+      bytes += generator.text("Total  : Rp ${totalCost.toInt()}");
       bytes += generator.text("--------------------------------");
-      bytes += generator.text("Terima Kasih Atas Kepercayaan Anda", styles: const PosStyles(align: PosAlign.center));
+      bytes += generator.text("Simpan Resi ini", styles: const PosStyles(align: PosAlign.center));
+      bytes += generator.text("Sebagai Bukti Transaksi Sah", styles: const PosStyles(align: PosAlign.center));
+      bytes += generator.text("*** TERIMA KASIH ***", styles: const PosStyles(align: PosAlign.center));
       bytes += generator.feed(3);
 
       await PrintBluetoothThermal.writeBytes(bytes);

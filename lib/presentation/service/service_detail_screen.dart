@@ -129,6 +129,7 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
   }
 
   Future<void> _printReceipt() async {
+    final totalKeseluruhan = widget.service.serviceFee + _totalSparepartCost;
     try {
       await _printerService.printServiceTicket(
         serviceId: 'SRV-${widget.service.id}',
@@ -136,6 +137,7 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
         phone: widget.service.phone,
         unit: '${widget.service.phoneBrand} ${widget.service.phoneType}',
         complaint: widget.service.issue,
+        totalCost: totalKeseluruhan,
       );
     } catch (e) {
       if (mounted) {
