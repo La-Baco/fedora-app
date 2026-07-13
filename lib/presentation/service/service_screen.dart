@@ -26,7 +26,9 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
 
   final List<String> _brands = [
     'Semua', 'Oppo', 'Samsung', 'Xiaomi', 'Asus', 
-    'Advan', 'Infinix', 'Realme', 'Lainnya'
+    'Advan', 'Infinix', 'Realme', 'Apple', 'Poco', 
+    'Vivo', 'Honor', 'Nokia', 'Redmi', 'Tecno', 
+    'Itel', 'Huawei', 'Lainnya'
   ];
 
   @override

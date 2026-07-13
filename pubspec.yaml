@@ -48,6 +48,8 @@ dependencies:
   file_picker: ^8.1.2
   url_launcher: ^6.3.2
   print_bluetooth_thermal: ^1.0.3
+  esc_pos_utils_plus: ^2.0.4
+  image: ^4.9.1
 
 dev_dependencies:
   flutter_test:

@@ -1,6 +1,10 @@
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
+import 'package:image/image.dart' as img;
+
 
 class PrinterService {
   Future<List<BluetoothInfo>> getBondedDevices() async {
@@ -30,30 +34,51 @@ class PrinterService {
   }) async {
     bool isConnected = await PrintBluetoothThermal.connectionStatus;
     if (isConnected) {
-      String receipt = "";
-      receipt += "KONTER FEDORA\n";
-      receipt += "--------------------------------\n";
-      receipt += "No   : $invoiceId\n";
-      receipt += "Kasir: $cashier\n";
-      receipt += "Tgl  : ${DateFormat('dd-MM-yyyy HH:mm').format(DateTime.now())}\n";
-      receipt += "--------------------------------\n";
+      final profile = await CapabilityProfile.load();
+      final generator = Generator(PaperSize.mm58, profile);
+      List<int> bytes = [];
+
+      try {
+        final ByteData data = await rootBundle.load('assets/logo-bg.png');
+        final Uint8List imgBytes = data.buffer.asUint8List();
+        final img.Image? image = img.decodeImage(imgBytes);
+        if (image != null) {
+          final img.Image resized = img.copyResize(image, width: 200); 
+          bytes += generator.image(resized, align: PosAlign.center);
+        }
+      } catch (e) {
+        debugPrint("Error loading image: $e");
+      }
+
+      bytes += generator.text("KONTER FEDORA",
+          styles: const PosStyles(
+            align: PosAlign.center,
+            bold: true,
+          ));
+      bytes += generator.text("--------------------------------");
+      bytes += generator.text("No   : $invoiceId");
+      bytes += generator.text("Kasir: $cashier");
+      bytes += generator.text("Tgl  : ${DateFormat('dd-MM-yyyy HH:mm').format(DateTime.now())}");
+      bytes += generator.text("--------------------------------");
 
       for (var item in items) {
-        receipt += "${item['name']}\n";
-        receipt += "  ${item['qty']}x Rp ${item['price']}    Rp ${item['subtotal']}\n";
+        bytes += generator.text("${item['name']}");
+        bytes += generator.text("  ${item['qty']}x Rp ${item['price']}    Rp ${item['subtotal']}");
       }
 
-      receipt += "--------------------------------\n";
-      receipt += "Subtotal: Rp ${totalAmount.toInt()}\n";
+      bytes += generator.text("--------------------------------");
+      bytes += generator.text("Subtotal: Rp ${totalAmount.toInt()}");
       if (discountAmount > 0) {
-        receipt += "Diskon  : Rp ${discountAmount.toInt()}\n";
+        bytes += generator.text("Diskon  : Rp ${discountAmount.toInt()}");
       }
-      receipt += "Total   : Rp ${(totalAmount - discountAmount).toInt()}\n";
-      receipt += "Bayar   : Rp ${paymentAmount.toInt()} ($paymentMethod)\n";
-      receipt += "Kembali : Rp ${changeAmount.toInt()}\n\n";
-      receipt += "Terima Kasih Atas Kunjungan Anda\n\n\n";
+      bytes += generator.text("Total   : Rp ${(totalAmount - discountAmount).toInt()}");
+      bytes += generator.text("Bayar   : Rp ${paymentAmount.toInt()} ($paymentMethod)");
+      bytes += generator.text("Kembali : Rp ${changeAmount.toInt()}");
+      bytes += generator.feed(1);
+      bytes += generator.text("Terima Kasih Atas Kunjungan Anda", styles: const PosStyles(align: PosAlign.center));
+      bytes += generator.feed(3);
 
-      await PrintBluetoothThermal.writeString(printText: PrintTextSize(size: 1, text: receipt));
+      await PrintBluetoothThermal.writeBytes(bytes);
     } else {
       debugPrint("Printer tidak terkoneksi.");
     }
@@ -68,20 +93,40 @@ class PrinterService {
   }) async {
     bool isConnected = await PrintBluetoothThermal.connectionStatus;
     if (isConnected) {
-      String receipt = "";
-      receipt += "KONTER FEDORA\n";
-      receipt += "TANDA TERIMA SERVICE\n";
-      receipt += "--------------------------------\n";
-      receipt += "No     : $serviceId\n";
-      receipt += "Nama   : $customerName\n";
-      receipt += "HP     : $phone\n";
-      receipt += "Unit   : $unit\n";
-      receipt += "Keluhan: $complaint\n";
-      receipt += "--------------------------------\n";
-      receipt += "Harap bawa resi ini saat\n";
-      receipt += "pengambilan unit.\n\n\n";
+      final profile = await CapabilityProfile.load();
+      final generator = Generator(PaperSize.mm58, profile);
+      List<int> bytes = [];
 
-      await PrintBluetoothThermal.writeString(printText: PrintTextSize(size: 1, text: receipt));
+      try {
+        final ByteData data = await rootBundle.load('assets/logo-bg.png');
+        final Uint8List imgBytes = data.buffer.asUint8List();
+        final img.Image? image = img.decodeImage(imgBytes);
+        if (image != null) {
+          final img.Image resized = img.copyResize(image, width: 200); 
+          bytes += generator.image(resized, align: PosAlign.center);
+        }
+      } catch (e) {
+        debugPrint("Error loading image: $e");
+      }
+
+      bytes += generator.text("KONTER FEDORA",
+          styles: const PosStyles(
+            align: PosAlign.center,
+            bold: true,
+          ));
+      bytes += generator.text("TANDA TERIMA SERVICE", styles: const PosStyles(align: PosAlign.center));
+      bytes += generator.text("--------------------------------");
+      bytes += generator.text("No     : $serviceId");
+      bytes += generator.text("Tgl    : ${DateFormat('dd-MM-yyyy HH:mm').format(DateTime.now())}");
+      bytes += generator.text("Nama   : $customerName");
+      bytes += generator.text("HP     : $phone");
+      bytes += generator.text("Unit   : $unit");
+      bytes += generator.text("Keluhan: $complaint");
+      bytes += generator.text("--------------------------------");
+      bytes += generator.text("Terima Kasih Atas Kepercayaan Anda", styles: const PosStyles(align: PosAlign.center));
+      bytes += generator.feed(3);
+
+      await PrintBluetoothThermal.writeBytes(bytes);
     }
   }
 }
