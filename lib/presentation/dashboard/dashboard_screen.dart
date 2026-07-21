@@ -7,6 +7,7 @@ import '../../utils/currency_formatter.dart';
 import '../service/providers/service_provider.dart';
 import '../stock/providers/stock_provider.dart';
 import 'providers/dashboard_provider.dart';
+import '../service/service_detail_screen.dart';
 
 enum DashboardFilter { today, week, month, allTime }
 
@@ -40,6 +41,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final servicesAsync = ref.watch(servicesStreamProvider);
     final salesAsync = ref.watch(salesHistoryStreamProvider);
     final stocksAsync = ref.watch(stocksStreamProvider);
+    final debtAsync = ref.watch(debtCustomersProvider);
     final theme = Theme.of(context);
 
     return Scaffold(
@@ -425,6 +427,94 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           ],
                           
                           const SizedBox(height: 24),
+                          
+                          // DEBT CUSTOMERS
+                          debtAsync.when(
+                            data: (debts) {
+                              if (debts.isEmpty) return const SizedBox.shrink();
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('Daftar Hutang Pelanggan', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.redAccent)),
+                                  const SizedBox(height: 12),
+                                  Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(color: Colors.redAccent.shade100, width: 1.5),
+                                    ),
+                                    child: ListView.separated(
+                                      padding: const EdgeInsets.symmetric(vertical: 8),
+                                      shrinkWrap: true,
+                                      physics: const NeverScrollableScrollPhysics(),
+                                      itemCount: debts.length,
+                                      separatorBuilder: (context, index) => Divider(height: 1, color: Colors.grey.shade100),
+                                      itemBuilder: (context, index) {
+                                        final debt = debts[index];
+                                        return ListTile(
+                                          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                                          leading: Container(
+                                            width: 48,
+                                            height: 48,
+                                            decoration: BoxDecoration(
+                                              color: Colors.redAccent.withOpacity(0.1),
+                                              borderRadius: BorderRadius.circular(14),
+                                            ),
+                                            child: const Icon(Icons.money_off, color: Colors.redAccent, size: 24),
+                                          ),
+                                          title: Text(debt.service.customerName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                                          subtitle: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              const SizedBox(height: 4),
+                                              Row(
+                                                children: [
+                                                  const Icon(Icons.location_on_outlined, size: 14, color: Colors.grey),
+                                                  const SizedBox(width: 4),
+                                                  Expanded(child: Text('Desa ${debt.service.village}', style: TextStyle(fontSize: 13, color: Colors.grey.shade600))),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 2),
+                                              Row(
+                                                children: [
+                                                  const Icon(Icons.phone_outlined, size: 14, color: Colors.grey),
+                                                  const SizedBox(width: 4),
+                                                  Text(debt.service.phone, style: TextStyle(fontSize: 13, color: Colors.blue.shade600)),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 2),
+                                              Row(
+                                                children: [
+                                                  const Icon(Icons.calendar_today_outlined, size: 14, color: Colors.grey),
+                                                  const SizedBox(width: 4),
+                                                  Text(DateFormat('dd MMM yyyy, HH:mm').format(debt.service.createdAt), style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                          trailing: Text(
+                                            CurrencyFormat.convertToIdr(debt.totalCost),
+                                            style: const TextStyle(fontWeight: FontWeight.w900, color: Colors.redAccent, fontSize: 14),
+                                          ),
+                                          onTap: () {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (context) => ServiceDetailScreen(service: debt.service),
+                                              ),
+                                            );
+                                          }
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(height: 24),
+                                ],
+                              );
+                            },
+                            loading: () => const Center(child: CircularProgressIndicator()),
+                            error: (err, stack) => const SizedBox.shrink(),
+                          ),
                           
                           // RECENT ACTIVITIES
                           const Text('Aktivitas Terakhir', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),

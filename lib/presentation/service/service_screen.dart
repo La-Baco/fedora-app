@@ -49,6 +49,8 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
         return Colors.green;
       case 'Sudah Diambil':
         return Colors.grey;
+      case 'Hutang':
+        return Colors.redAccent;
       case 'Batal':
         return Colors.red;
       default:
@@ -64,6 +66,7 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
       case 'Proses Perbaikan': return 0.7;
       case 'Selesai': return 1.0;
       case 'Sudah Diambil': return 1.0;
+      case 'Hutang': return 1.0;
       case 'Batal': return 0.0;
       default: return 0.1;
     }

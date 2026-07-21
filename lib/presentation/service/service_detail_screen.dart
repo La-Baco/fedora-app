@@ -29,6 +29,7 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
     'Proses Perbaikan',
     'Selesai',
     'Sudah Diambil',
+    'Hutang',
     'Batal',
   ];
 
